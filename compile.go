@@ -68,6 +68,14 @@ type parser struct {
 }
 
 func compile(pattern string, separator rune) (*Pattern, error) {
+	return compilePattern(pattern, separator, true)
+}
+
+func compileFallback(pattern string, separator rune) (*Pattern, error) {
+	return compilePattern(pattern, separator, false)
+}
+
+func compilePattern(pattern string, separator rune, allowSpecialization bool) (*Pattern, error) {
 	if len(pattern) > MaxPatternBytes {
 		return nil, compileError(MaxPatternBytes, "pattern exceeds 4096 bytes")
 	}
@@ -82,6 +90,16 @@ func compile(pattern string, separator rune) (*Pattern, error) {
 	}
 	if stop != 0 {
 		panic("glob: parser stopped at top level")
+	}
+	fast := specialize(root, separator)
+	if allowSpecialization && fast.kind != matcherProgram {
+		return &Pattern{
+			source:    pattern,
+			separator: separator,
+			kind:      fast.kind,
+			prefix:    fast.prefix,
+			suffix:    fast.suffix,
+		}, nil
 	}
 
 	lex := []lexInstruction{{op: lexAccept}}

@@ -46,6 +46,9 @@ func (e *CompileError) Error() string {
 type Pattern struct {
 	source    string
 	separator rune
+	kind      matcherKind
+	prefix    string
+	suffix    string
 	start     uint16
 	accept    uint16
 	words     uint16

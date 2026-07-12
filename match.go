@@ -1,6 +1,10 @@
 package glob
 
-import "math/bits"
+import (
+	"math/bits"
+	"strings"
+	"unicode/utf8"
+)
 
 const maxStateWords = (maxProgramStates + 63) / 64
 
@@ -22,6 +26,21 @@ func (s *stateSet) clear(words uint16) {
 
 // Match reports whether input matches the complete pattern.
 func (p *Pattern) Match(input string) bool {
+	switch p.kind {
+	case matcherLiteral:
+		return input == p.prefix
+	case matcherAll:
+		return true
+	case matcherSingleStar:
+		return matchSingleStar(input, p.prefix, p.suffix, p.separator)
+	case matcherRecursiveSuffix:
+		return len(input) >= len(p.suffix) && strings.HasSuffix(input, p.suffix)
+	default:
+		return p.matchProgram(input)
+	}
+}
+
+func (p *Pattern) matchProgram(input string) bool {
 	var a, b stateSet
 	current, next := &a, &b
 	current.add(p.start)
@@ -38,6 +57,27 @@ func (p *Pattern) Match(input string) bool {
 	}
 	p.step(current, next, true, 0)
 	return next.has(p.accept)
+}
+
+func matchSingleStar(input, prefix, suffix string, separator rune) bool {
+	if len(input) < len(prefix)+len(suffix) ||
+		!strings.HasPrefix(input, prefix) ||
+		!strings.HasSuffix(input, suffix) {
+		return false
+	}
+	return !containsSeparator(input[len(prefix):len(input)-len(suffix)], separator)
+}
+
+func containsSeparator(s string, separator rune) bool {
+	if separator < utf8.RuneSelf {
+		return strings.IndexByte(s, byte(separator)) >= 0
+	}
+	for _, r := range s {
+		if r == separator {
+			return true
+		}
+	}
+	return false
 }
 
 func (p *Pattern) step(current, next *stateSet, boundary bool, r rune) {

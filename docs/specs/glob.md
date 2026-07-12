@@ -432,7 +432,7 @@ Every execution strategy for a successfully compiled pattern accepts exactly
 the language defined by this document. Selecting an optimization cannot change
 a match result.
 
-Lands: when more than one execution strategy is introduced.
+INV-GLOB-SEMANTIC-EQUIVALENCE: enforced by `TestSpecializationsMatchProgram`.
 
 ### INV-GLOB-IMMUTABLE-MATCHER
 

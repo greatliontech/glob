@@ -329,8 +329,13 @@ func TestMatchAllocations(t *testing.T) {
 		input   string
 	}{
 		{"literal", "literal"},
+		{"literal", "different"},
+		{"*", "name"},
+		{"*", "path/name"},
+		{"**", "path/to/name"},
 		{"**/*.{go,mod}", "a/b/main.go"},
 		{"a/**/[!0-9]?*", "a/x/name"},
+		{"**/*.go", "a/b/main.go"},
 		{"**/*.go", "a/b/main.sum"},
 	}
 	for _, tt := range patterns {
@@ -345,22 +350,30 @@ func TestMatchAllocations(t *testing.T) {
 }
 
 func TestConcurrentMatch(t *testing.T) {
-	p := glob.MustCompile("{cmd,internal}/**/*.{go,mod}")
+	patterns := []*glob.Pattern{
+		glob.MustCompile("{cmd,internal}/**/*.{go,mod}"),
+		glob.MustCompile("**/*.go"),
+	}
 	inputs := []string{"cmd/main.go", "internal/a/b/go.mod", "other/main.go", "cmd/main.sum"}
-	wants := []bool{true, true, false, false}
+	wants := [][]bool{
+		{true, true, false, false},
+		{true, false, true, false},
+	}
 	var wg sync.WaitGroup
-	for range 16 {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for i := range 1000 {
-				at := i % len(inputs)
-				if got := p.Match(inputs[at]); got != wants[at] {
-					t.Errorf("Match(%q) = %v, want %v", inputs[at], got, wants[at])
-					return
+	for pattern, p := range patterns {
+		for range 8 {
+			wg.Add(1)
+			go func() {
+				defer wg.Done()
+				for i := range 1000 {
+					at := i % len(inputs)
+					if got := p.Match(inputs[at]); got != wants[pattern][at] {
+						t.Errorf("Match(%q) = %v, want %v", inputs[at], got, wants[pattern][at])
+						return
+					}
 				}
-			}
-		}()
+			}()
+		}
 	}
 	wg.Wait()
 }
