@@ -1,4 +1,3 @@
-// Package glob compiles and matches path-aware glob patterns.
 package glob
 
 import (
@@ -15,11 +14,13 @@ type config struct {
 	separator rune
 }
 
-// Option configures pattern compilation.
+// Option configures pattern compilation. Passing a nil Option to [Compile] or
+// [MustCompile] is invalid.
 type Option func(*config)
 
 // WithSeparator configures separator as the path separator. The default is
-// '/'. If multiple separator options are supplied, the last one takes effect.
+// '/'. Separator must be a Unicode scalar value. If multiple separator options
+// are supplied, the last one takes effect.
 func WithSeparator(separator rune) Option {
 	return func(c *config) {
 		c.separator = separator
@@ -57,7 +58,9 @@ type Pattern struct {
 	dfa       *dfaProgram
 }
 
-// Compile compiles pattern. Options are applied in order.
+// Compile compiles pattern into an immutable matcher. Pattern must be valid
+// UTF-8 and no longer than [MaxPatternBytes]. Options are applied in order.
+// Compile returns a [CompileError] for invalid syntax or configuration.
 func Compile(pattern string, options ...Option) (*Pattern, error) {
 	c := config{separator: defaultSeparator}
 	for _, option := range options {
@@ -81,7 +84,7 @@ func MustCompile(pattern string, options ...Option) *Pattern {
 	return p
 }
 
-// String returns the source pattern.
+// String returns the pattern supplied to [Compile].
 func (p *Pattern) String() string {
 	return p.source
 }
