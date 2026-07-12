@@ -1,0 +1,76 @@
+name: Release
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@93cb6efe18208431cddfb8368fd83d5badbf9bfd # v5
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Check release head
+        id: release-head
+        run: |
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          if [ "$(git rev-parse origin/main)" = "$GITHUB_SHA" ]; then
+            echo "current=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Skipping stale push $GITHUB_SHA"
+            echo "current=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install semrel
+        if: steps.release-head.outputs.current == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SEMREL_SHA256: 2cbb96d7de65ee7c8998f8179ec1f419c4d39804835bc266c0f42f5ada128139
+        run: |
+          install_dir="$RUNNER_TEMP/semrel"
+          mkdir -p "$install_dir"
+          gh release download 0.6.1 \
+            --repo greatliontech/semrel \
+            --pattern semrel_Linux_x86_64.tar.gz \
+            --dir "$install_dir"
+          echo "$SEMREL_SHA256  $install_dir/semrel_Linux_x86_64.tar.gz" | sha256sum --check --strict
+          tar -xzf "$install_dir/semrel_Linux_x86_64.tar.gz" -C "$install_dir" semrel
+          echo "$install_dir" >> "$GITHUB_PATH"
+
+      - uses: actions/create-github-app-token@fee1f7d63c2ff003460e3d139729b119787bc349 # v2
+        if: steps.release-head.outputs.current == 'true'
+        id: app-token
+        with:
+          app-id: ${{ vars.GLT_RELEASER_APP_ID }}
+          private-key: ${{ secrets.GLT_RELEASER_APP_KEY }}
+          permission-contents: write
+
+      - name: Release
+        if: steps.release-head.outputs.current == 'true'
+        id: release
+        env:
+          SEMREL_BRANCH: ${{ github.sha }}
+          SEMREL_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: |
+          result="$(semrel release --json)"
+          echo "$result"
+          echo "created=$(jq -r '.created' <<<"$result")" >> "$GITHUB_OUTPUT"
+          echo "version=$(jq -r '.next' <<<"$result")" >> "$GITHUB_OUTPUT"
+
+      - name: Verify release tag
+        if: steps.release.outputs.created == 'true'
+        env:
+          RELEASE_TAG: ${{ steps.release.outputs.version }}
+        run: |
+          git fetch --force origin "refs/tags/$RELEASE_TAG:refs/tags/$RELEASE_TAG"
+          test "$(git rev-list -n 1 "$RELEASE_TAG")" = "$GITHUB_SHA"

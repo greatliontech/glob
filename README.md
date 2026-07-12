@@ -143,3 +143,8 @@ decoding, so each invalid byte is treated as `U+FFFD`.
   protocols.
 - Do not concatenate literal user text into a pattern without escaping it for
   the pattern position where it will appear.
+
+## License
+
+Copyright 2026 Great Lion Technologies. Licensed under the
+[Apache License 2.0](LICENSE).
