@@ -90,6 +90,60 @@ func BenchmarkCoreMatch(b *testing.B) {
 	}
 }
 
+func BenchmarkExecutionStrategies(b *testing.B) {
+	cases := map[string]bool{
+		"class-star":       true,
+		"multiple-classes": true,
+		"alternatives":     true,
+		"dense-active":     true,
+		"globstar-deep":    true,
+		"long-input":       true,
+	}
+	for _, bc := range coreBenchmarkCases {
+		if !cases[bc.name] {
+			continue
+		}
+		dfa, err := compile(bc.pattern, defaultSeparator)
+		if err != nil {
+			b.Fatalf("Compile(%q): %v", bc.pattern, err)
+		}
+		if dfa.kind != matcherDFA {
+			b.Fatalf("Compile(%q) kind = %v, want DFA", bc.pattern, dfa.kind)
+		}
+		fallback, err := compileFallback(bc.pattern, defaultSeparator)
+		if err != nil {
+			b.Fatalf("compileFallback(%q): %v", bc.pattern, err)
+		}
+		benchStrategyMatch(b, bc.name+"/match", bc.matchInput, true, dfa, fallback)
+		benchStrategyMatch(b, bc.name+"/miss", bc.failingInput, false, dfa, fallback)
+	}
+}
+
+func benchStrategyMatch(b *testing.B, name, input string, want bool, dfa, fallback *Pattern) {
+	b.Run(name, func(b *testing.B) {
+		if got := dfa.Match(input); got != want {
+			b.Fatalf("DFA Match(%q) = %v, want %v", input, got, want)
+		}
+		if got := fallback.matchProgram(input); got != want {
+			b.Fatalf("fallback matchProgram(%q) = %v, want %v", input, got, want)
+		}
+		b.Run("dfa", func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(len(input)))
+			for b.Loop() {
+				coreMatchSink = dfa.Match(input)
+			}
+		})
+		b.Run("nfa", func(b *testing.B) {
+			b.ReportAllocs()
+			b.SetBytes(int64(len(input)))
+			for b.Loop() {
+				coreMatchSink = fallback.matchProgram(input)
+			}
+		})
+	})
+}
+
 func benchCoreMatch(b *testing.B, name string, p *Pattern, input string, want bool) {
 	b.Run(name, func(b *testing.B) {
 		if got := p.matchProgram(input); got != want {

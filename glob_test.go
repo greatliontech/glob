@@ -337,6 +337,8 @@ func TestMatchAllocations(t *testing.T) {
 		{"a/**/[!0-9]?*", "a/x/name"},
 		{"**/*.go", "a/b/main.go"},
 		{"**/*.go", "a/b/main.sum"},
+		{"{cmd,internal}/**/*.{go,mod}", "internal/a/main.go"},
+		{strings.Repeat("{,a}", 256) + "b", strings.Repeat("a", 256) + "b"},
 	}
 	for _, tt := range patterns {
 		p := glob.MustCompile(tt.pattern)

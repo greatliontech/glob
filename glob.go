@@ -54,6 +54,7 @@ type Pattern struct {
 	words     uint16
 	program   []instruction
 	classes   []characterClass
+	dfa       *dfaProgram
 }
 
 // Compile compiles pattern. Options are applied in order.

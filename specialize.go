@@ -9,6 +9,7 @@ type matcherKind uint8
 
 const (
 	matcherProgram matcherKind = iota
+	matcherDFA
 	matcherLiteral
 	matcherAll
 	matcherSingleStar

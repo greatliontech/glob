@@ -88,7 +88,7 @@ func TestMatchDoesNotMutatePattern(t *testing.T) {
 	}
 }
 
-func TestSpecializationsMatchProgram(t *testing.T) {
+func TestExecutionStrategiesMatchProgram(t *testing.T) {
 	tests := []struct {
 		pattern   string
 		separator rune
@@ -115,11 +115,14 @@ func TestSpecializationsMatchProgram(t *testing.T) {
 		{`a\\*b`, '\\', matcherSingleStar},
 		{"**.*x", '.', matcherRecursiveSuffix},
 		{"**�*x", utf8.RuneError, matcherRecursiveSuffix},
-		{"�", '/', matcherProgram},
-		{"*", utf8.RuneError, matcherProgram},
-		{"[a-z]*", '/', matcherProgram},
-		{"{a,b}", '/', matcherProgram},
-		{"a**b", '/', matcherProgram},
+		{"�", '/', matcherDFA},
+		{"*", utf8.RuneError, matcherDFA},
+		{"[a-z]*", '/', matcherDFA},
+		{"{a,b}", '/', matcherDFA},
+		{"a**b", '/', matcherDFA},
+		{"a/**/b", '/', matcherDFA},
+		{"[a-z]*", 'm', matcherDFA},
+		{"[a-\U0010ffff]", '/', matcherDFA},
 	}
 	alphabet := []byte{'a', 'b', '/', '.', 0xff}
 	for _, tt := range tests {
@@ -130,12 +133,25 @@ func TestSpecializationsMatchProgram(t *testing.T) {
 		if p.kind != tt.wantKind {
 			t.Errorf("Compile(%q, %q) kind = %v, want %v", tt.pattern, tt.separator, p.kind, tt.wantKind)
 		}
-		if p.kind == matcherProgram {
+		switch p.kind {
+		case matcherProgram:
 			if len(p.program) == 0 {
 				t.Errorf("Compile(%q, %q) selected program without instructions", tt.pattern, tt.separator)
 			}
-		} else if len(p.program) != 0 || len(p.classes) != 0 || p.words != 0 {
-			t.Errorf("Compile(%q, %q) specialization retained fallback state", tt.pattern, tt.separator)
+			if p.dfa != nil {
+				t.Errorf("Compile(%q, %q) fallback retained a DFA", tt.pattern, tt.separator)
+			}
+		case matcherDFA:
+			if p.dfa == nil || len(p.dfa.transitions) == 0 {
+				t.Errorf("Compile(%q, %q) selected an empty DFA", tt.pattern, tt.separator)
+			}
+			if len(p.program) != 0 || len(p.classes) != 0 || p.words != 0 {
+				t.Errorf("Compile(%q, %q) DFA retained fallback state", tt.pattern, tt.separator)
+			}
+		default:
+			if p.dfa != nil || len(p.program) != 0 || len(p.classes) != 0 || p.words != 0 {
+				t.Errorf("Compile(%q, %q) specialization retained compiled state", tt.pattern, tt.separator)
+			}
 		}
 		fallback, err := compileFallback(tt.pattern, tt.separator)
 		if err != nil {
@@ -162,12 +178,47 @@ func TestSpecializationsMatchProgram(t *testing.T) {
 			"a*xb",
 			"a?xb",
 			`a\xb`,
+			string(utf8.MaxRune),
+			string([]byte{0xff, 0xfe}),
 			string([]byte{'a', 0xff, 'x'}),
 		} {
 			if got, want := p.Match(input), fallback.matchProgram(input); got != want {
 				t.Errorf("Compile(%q, %q).Match(%q) = %v, program = %v", tt.pattern, tt.separator, input, got, want)
 			}
 		}
+	}
+}
+
+func TestDeterminizationLimits(t *testing.T) {
+	p, err := compileFallback("{alpha,beta}/**/[a-z]*.{go,mod}", defaultSeparator)
+	if err != nil {
+		t.Fatal(err)
+	}
+	full := determinize(p, defaultDFALimits)
+	if full == nil {
+		t.Fatal("representative pattern did not determinize")
+	}
+	exact := dfaLimits{states: len(full.accept), transitions: len(full.transitions)}
+	if determinize(p, exact) == nil {
+		t.Fatal("determinization failed at exact limits")
+	}
+	if determinize(p, dfaLimits{states: exact.states - 1, transitions: exact.transitions}) != nil {
+		t.Fatal("determinization exceeded state limit")
+	}
+	if determinize(p, dfaLimits{states: exact.states, transitions: exact.transitions - 1}) != nil {
+		t.Fatal("determinization exceeded transition limit")
+	}
+
+	pattern := strings.Repeat("{,a}", maxDFAStates) + "b"
+	selected, err := Compile(pattern)
+	if err != nil {
+		t.Fatalf("Compile(over DFA budget): %v", err)
+	}
+	if selected.kind != matcherProgram {
+		t.Fatalf("Compile(over DFA budget) kind = %v, want program fallback", selected.kind)
+	}
+	if !selected.Match(strings.Repeat("a", maxDFAStates) + "b") {
+		t.Fatal("program fallback rejected matching input")
 	}
 }
 
@@ -199,6 +250,30 @@ func FuzzCompiledProgramInvariants(f *testing.F) {
 			t.Fatalf("compileFallback generated valid pattern %q: %v", pattern, err)
 		}
 		assertProgramInvariants(t, p)
+	})
+}
+
+func FuzzExecutionStrategiesMatch(f *testing.F) {
+	f.Add("a/**/[a-z]*.{go,mod}", "a/x/main.go", uint8(0))
+	f.Add("[a-z]*", "amz", uint8(4))
+	f.Add("*", string([]byte{0xff}), uint8(9))
+	separators := [...]rune{'/', '.', ':', '*', '?', '[', '{', ',', '}', utf8.RuneError, 0, utf8.MaxRune}
+	f.Fuzz(func(t *testing.T, pattern, input string, selected uint8) {
+		if len(pattern) > MaxPatternBytes {
+			return
+		}
+		separator := separators[int(selected)%len(separators)]
+		optimized, optimizedErr := Compile(pattern, WithSeparator(separator))
+		fallback, fallbackErr := compileFallback(pattern, separator)
+		if (optimizedErr == nil) != (fallbackErr == nil) {
+			t.Fatalf("Compile(%q, %q) errors differ: optimized=%v fallback=%v", pattern, separator, optimizedErr, fallbackErr)
+		}
+		if optimizedErr != nil {
+			return
+		}
+		if got, want := optimized.Match(input), fallback.matchProgram(input); got != want {
+			t.Fatalf("Compile(%q, %q).Match(%q) = %v, fallback = %v", pattern, separator, input, got, want)
+		}
 	})
 }
 

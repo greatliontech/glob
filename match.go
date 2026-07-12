@@ -35,9 +35,32 @@ func (p *Pattern) Match(input string) bool {
 		return matchSingleStar(input, p.prefix, p.suffix, p.separator)
 	case matcherRecursiveSuffix:
 		return len(input) >= len(p.suffix) && strings.HasSuffix(input, p.suffix)
+	case matcherDFA:
+		return p.matchDFA(input)
 	default:
 		return p.matchProgram(input)
 	}
+}
+
+func (p *Pattern) matchDFA(input string) bool {
+	d := p.dfa
+	state := d.start
+	stride := int(d.stride)
+	for _, r := range input {
+		var symbol uint16
+		if r == p.separator {
+			symbol = 0
+		} else if r < utf8.RuneSelf {
+			symbol = d.ascii[r]
+		} else {
+			symbol = d.symbol(r)
+		}
+		state = d.transitions[int(state)*stride+int(symbol)]
+		if state == 0 {
+			return false
+		}
+	}
+	return d.accept[state]
 }
 
 func (p *Pattern) matchProgram(input string) bool {

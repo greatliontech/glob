@@ -9,9 +9,9 @@
 - [x] 3.1 Run issue and invariant triage.
 - [x] 3.2 Add isolated fallback benchmarks and profile-guided matcher improvements.
 - [x] 3.3 Close out the fallback profiling chunk.
-- [ ] 4.1 Run issue and invariant triage.
-- [ ] 4.2 Add bounded determinization with the compiled matcher as fallback.
-- [ ] 4.3 Close out the deterministic matcher chunk.
+- [x] 4.1 Run issue and invariant triage.
+- [x] 4.2 Add bounded determinization with the compiled matcher as fallback.
+- [x] 4.3 Close out the deterministic matcher chunk.
 - [ ] 5.1 Run issue and invariant triage.
 - [ ] 5.2 Complete package documentation, examples, and integration guidance.
 - [ ] 5.3 Close out the implementation and delete this plan.

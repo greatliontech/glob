@@ -432,7 +432,8 @@ Every execution strategy for a successfully compiled pattern accepts exactly
 the language defined by this document. Selecting an optimization cannot change
 a match result.
 
-INV-GLOB-SEMANTIC-EQUIVALENCE: enforced by `TestSpecializationsMatchProgram`.
+INV-GLOB-SEMANTIC-EQUIVALENCE: enforced by `TestExecutionStrategiesMatchProgram`
+and `FuzzExecutionStrategiesMatch`.
 
 ### INV-GLOB-IMMUTABLE-MATCHER
 
@@ -449,5 +450,6 @@ GLOB-COMPILE-003. Every such pattern has a non-exponential matching strategy
 within the documented time and allocation bounds; internal representation
 limits cannot reject it or assign it an unbounded matcher.
 
-INV-GLOB-BOUNDED-MATCH: enforced by `FuzzCompiledProgramInvariants` and
+INV-GLOB-BOUNDED-MATCH: enforced by `FuzzCompiledProgramInvariants`,
+`FuzzExecutionStrategiesMatch`, `TestDeterminizationLimits`, and
 `TestMatchAllocations`.

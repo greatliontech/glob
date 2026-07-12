@@ -108,7 +108,7 @@ func compilePattern(pattern string, separator rune, allowSpecialization bool) (*
 	start := compileLex(root, 0, &lex)
 	program, programStart, accept := compileProgram(lex, start)
 
-	return &Pattern{
+	compiled := &Pattern{
 		source:    pattern,
 		separator: separator,
 		start:     uint16(programStart),
@@ -116,7 +116,18 @@ func compilePattern(pattern string, separator rune, allowSpecialization bool) (*
 		words:     uint16((len(program) + 63) / 64),
 		program:   program,
 		classes:   p.classes,
-	}, nil
+	}
+	if allowSpecialization {
+		if dfa := determinize(compiled, defaultDFALimits); dfa != nil {
+			return &Pattern{
+				source:    pattern,
+				separator: separator,
+				kind:      matcherDFA,
+				dfa:       dfa,
+			}, nil
+		}
+	}
+	return compiled, nil
 }
 
 func firstInvalidUTF8(s string) int {
