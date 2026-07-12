@@ -439,7 +439,8 @@ INV-GLOB-SEMANTIC-EQUIVALENCE: enforced by `TestSpecializationsMatchProgram`.
 Compilation is the only operation that constructs matcher state. Matching does
 not mutate compiled matcher state.
 
-Lands: when the compiled matcher is first implemented.
+INV-GLOB-IMMUTABLE-MATCHER: enforced by `TestMatchDoesNotMutatePattern` and
+`TestConcurrentMatch`.
 
 ### INV-GLOB-BOUNDED-MATCH
 
@@ -448,4 +449,5 @@ GLOB-COMPILE-003. Every such pattern has a non-exponential matching strategy
 within the documented time and allocation bounds; internal representation
 limits cannot reject it or assign it an unbounded matcher.
 
-Lands: when the general matching engine is first implemented.
+INV-GLOB-BOUNDED-MATCH: enforced by `FuzzCompiledProgramInvariants` and
+`TestMatchAllocations`.

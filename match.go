@@ -126,16 +126,23 @@ func (p *Pattern) step(current, next *stateSet, boundary bool, r rune) {
 }
 
 func (p *Pattern) close(states *stateSet) {
-	for pc, in := range p.program {
-		if !states.has(uint16(pc)) {
-			continue
-		}
-		switch in.op {
-		case opJump, opStar, opGlobstarStart, opGlobstarBody:
-			states.add(in.out)
-		case opSplit:
-			states.add(in.out)
-			states.add(in.alt)
+	for word := uint16(0); word < p.words; word++ {
+		var processed uint64
+		for active := states[word]; active != 0; active = states[word] &^ processed {
+			bit := uint16(bits.TrailingZeros64(active))
+			processed |= uint64(1) << bit
+			pc := word<<6 | bit
+			if int(pc) >= len(p.program) {
+				continue
+			}
+			in := p.program[pc]
+			switch in.op {
+			case opJump, opStar, opGlobstarStart, opGlobstarBody:
+				states.add(in.out)
+			case opSplit:
+				states.add(in.out)
+				states.add(in.alt)
+			}
 		}
 	}
 }

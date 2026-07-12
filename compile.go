@@ -91,15 +91,17 @@ func compilePattern(pattern string, separator rune, allowSpecialization bool) (*
 	if stop != 0 {
 		panic("glob: parser stopped at top level")
 	}
-	fast := specialize(root, separator)
-	if allowSpecialization && fast.kind != matcherProgram {
-		return &Pattern{
-			source:    pattern,
-			separator: separator,
-			kind:      fast.kind,
-			prefix:    fast.prefix,
-			suffix:    fast.suffix,
-		}, nil
+	if allowSpecialization {
+		fast := specialize(root, separator)
+		if fast.kind != matcherProgram {
+			return &Pattern{
+				source:    pattern,
+				separator: separator,
+				kind:      fast.kind,
+				prefix:    fast.prefix,
+				suffix:    fast.suffix,
+			}, nil
+		}
 	}
 
 	lex := []lexInstruction{{op: lexAccept}}

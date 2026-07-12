@@ -1,6 +1,7 @@
 package glob
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 	"unicode/utf8"
@@ -19,16 +20,71 @@ func TestCompiledProgramInvariants(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Compile(%q): %v", pattern, err)
 		}
-		if len(p.program) > maxProgramStates {
-			t.Fatalf("program has %d states, bound is %d", len(p.program), maxProgramStates)
-		}
-		for pc, in := range p.program {
-			for _, target := range epsilonTargets(in) {
-				if target <= pc {
-					t.Fatalf("epsilon edge %d -> %d is not forward", pc, target)
-				}
+		assertProgramInvariants(t, p)
+	}
+}
+
+func assertProgramInvariants(t testing.TB, p *Pattern) {
+	t.Helper()
+	if len(p.program) > maxProgramStates {
+		t.Fatalf("program has %d states, bound is %d", len(p.program), maxProgramStates)
+	}
+	for pc, in := range p.program {
+		for _, target := range epsilonTargets(in) {
+			if target <= pc {
+				t.Fatalf("epsilon edge %d -> %d is not forward", pc, target)
 			}
 		}
+	}
+}
+
+func TestClosureFollowsNewlyActivatedStates(t *testing.T) {
+	program := make([]instruction, 67)
+	for i := range program {
+		program[i].op = opAccept
+	}
+	program[0] = instruction{op: opJump, out: 1}
+	program[1] = instruction{op: opSplit, out: 2, alt: 65}
+	program[65] = instruction{op: opJump, out: 66}
+
+	p := &Pattern{program: program, words: 2}
+	var states stateSet
+	states.add(0)
+	p.close(&states)
+	for _, pc := range []uint16{0, 1, 2, 65, 66} {
+		if !states.has(pc) {
+			t.Errorf("closure omitted state %d", pc)
+		}
+	}
+}
+
+func TestMatchDoesNotMutatePattern(t *testing.T) {
+	for _, tt := range []struct {
+		pattern string
+		inputs  []string
+	}{
+		{"src/main.go", []string{"src/main.go", "src/main.rs"}},
+		{"*", []string{"name", "path/name"}},
+		{"**", []string{"", "path/name"}},
+		{"**/*.go", []string{"path/main.go", "path/main.rs"}},
+		{"{cmd,internal}/**/*.{go,mod}", []string{"internal/a/go.mod", "other/a.go"}},
+	} {
+		t.Run(tt.pattern, func(t *testing.T) {
+			p, err := Compile(tt.pattern)
+			if err != nil {
+				t.Fatalf("Compile(%q): %v", tt.pattern, err)
+			}
+			want, err := Compile(tt.pattern)
+			if err != nil {
+				t.Fatalf("second Compile(%q): %v", tt.pattern, err)
+			}
+			for _, input := range tt.inputs {
+				p.Match(input)
+				if !reflect.DeepEqual(p, want) {
+					t.Fatalf("Match(%q) mutated compiled pattern", input)
+				}
+			}
+		})
 	}
 }
 
@@ -130,4 +186,46 @@ func forEachByteString(alphabet []byte, max int, fn func(string)) {
 		}
 	}
 	visit(max)
+}
+
+func FuzzCompiledProgramInvariants(f *testing.F) {
+	f.Add([]byte{})
+	f.Add([]byte{0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10})
+	f.Add([]byte(strings.Repeat("\x00", MaxPatternBytes)))
+	f.Fuzz(func(t *testing.T, data []byte) {
+		pattern := generatedValidPattern(data)
+		p, err := compileFallback(pattern, defaultSeparator)
+		if err != nil {
+			t.Fatalf("compileFallback generated valid pattern %q: %v", pattern, err)
+		}
+		assertProgramInvariants(t, p)
+	})
+}
+
+func generatedValidPattern(data []byte) string {
+	if len(data) > MaxPatternBytes {
+		data = data[:MaxPatternBytes]
+	}
+	fragments := [...]string{
+		"a",
+		"?",
+		"*",
+		"[a-z]",
+		"[!0-9]",
+		`\*`,
+		"{x,y}",
+		"λ",
+		"/**/",
+		"{,q}",
+		"[α-ω]",
+	}
+	var pattern strings.Builder
+	pattern.Grow(min(len(data), MaxPatternBytes))
+	for _, selector := range data {
+		fragment := fragments[int(selector)%len(fragments)]
+		if pattern.Len()+len(fragment) <= MaxPatternBytes {
+			pattern.WriteString(fragment)
+		}
+	}
+	return pattern.String()
 }
