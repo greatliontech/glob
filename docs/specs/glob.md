@@ -326,6 +326,24 @@ separator configuration must compile successfully. Internal optimization or
 generated representation limits cannot cause such a pattern to be rejected.
 The byte limit may be raised but not lowered within a released major version.
 
+## Quoting
+
+### GLOB-QUOTE-001: Literal quoting
+
+`Quote` maps any string to a pattern whose match set is exactly that string,
+under every valid separator configuration. Each rune with potential pattern
+syntax — `\`, `*`, `?`, `[`, `]`, `{`, `}`, and `,` — is preceded by `\`;
+every other rune is written directly.
+
+The mapping is separator-independent by construction: an escaped occurrence
+of the configured separator is structural (GLOB-PATH-002) and matches that
+separator in the input, an escaped non-separator is the literal rune
+(GLOB-SYNTAX-007), and an unescaped ordinary rune that happens to be the
+configured separator is structural and matches itself — in every case the
+pattern consumes exactly the quoted rune. Quoting at most doubles the byte
+length; compilation of a quoted result is subject to GLOB-COMPILE-003 like
+any pattern.
+
 ## Matching Properties
 
 ### GLOB-MATCH-001: Determinism
@@ -453,3 +471,11 @@ limits cannot reject it or assign it an unbounded matcher.
 INV-GLOB-BOUNDED-MATCH: enforced by `FuzzCompiledProgramInvariants`,
 `FuzzExecutionStrategiesMatch`, `TestDeterminizationLimits`, and
 `TestMatchAllocations`.
+
+### INV-GLOB-QUOTE-EXACT
+
+For every string and every valid separator, the quoted pattern compiles
+(within GLOB-COMPILE-003 limits) and matches that string and no other input.
+
+INV-GLOB-QUOTE-EXACT: enforced by `TestQuoteMatchesExactlyItsInput` and
+`FuzzQuoteExact`.
