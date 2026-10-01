@@ -58,6 +58,14 @@ language are read from `wildmatch.c` at git 2.56.0:
 - A class that opens with `[:` but has no closing `:]` is read as an
   ordinary set starting with `[`.
 
+## Pattern length
+
+GLOB-COMPILE-003 limits a pattern to 4,096 bytes and rejects a longer
+one at compilation. Git has no such limit: a pattern of 4,097 `*` bytes
+matches `a` there. For results to equal git's, the limit must be an
+option too, with the bounded-execution guarantee stated in terms of
+whatever limit is in force.
+
 ## What must hold
 
 - GLOB-MATCH-001 through GLOB-MATCH-004 hold for every combination of
