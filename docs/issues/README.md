@@ -6,4 +6,4 @@ doc is deleted (git holds history).
 
 | slug | summary | Lands |
 |------|---------|-------|
-| [git-profile-and-byte-mode](git-profile-and-byte-mode.md) | git-go must match paths exactly as git's wildmatch does and will use this library's engine for it; that needs matching over bytes and a compile-time profile carrying git's syntax | git-go's first plan slots a chunk that matches paths against git patterns (pathspecs, ignore rules or attribute rules) |
+| [compile-options-for-git-matching](compile-options-for-git-matching.md) | git-go must match paths exactly as git's wildmatch does and will use this library's engine for it; each difference from git becomes a compile-time option (bytes as the unit, class negation, named classes, braces, case folding, star rules), with git's behaviour as one preset | git-go's first plan slots a chunk that matches paths against git patterns (pathspecs, ignore rules or attribute rules) |

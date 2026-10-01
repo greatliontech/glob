@@ -1,4 +1,4 @@
-# A byte mode and a git-compatible profile
+# Compile-time options, enough of them to match as git does
 
 Lands: when git-go's first plan slots a chunk that matches paths
 against git patterns (pathspecs, ignore rules or attribute rules)
@@ -12,25 +12,31 @@ for the engine's guarantees: no allocation while matching
 matcher backtracks and can take exponential time, and a git host matches
 patterns that clients supply.
 
-The language defined here differs from git's, so two additions are
-needed. Both are chosen at compile time. Neither changes the default
-language or the matching loops existing callers run.
+The language defined here differs from git's. Rather than add a second
+fixed language, each difference becomes an option given when a pattern
+is compiled, and a named set of options is a preset. Git's behaviour is
+one preset; the default language is another. Every option is consumed
+by the compiler: a compiled pattern carries no feature switches, so
+matching pays nothing for options it does not use, and existing callers
+run the loops they run today.
 
-## Byte mode
+## The unit of matching
 
 Git path names are bytes and need not be valid UTF-8. Today a pattern
 must be valid UTF-8 (GLOB-UNICODE-001) and each invalid input byte is
 read as U+FFFD (GLOB-UNICODE-002), so a pattern cannot name such a path
 and two names differing only in an invalid byte cannot be told apart.
 
-In byte mode the unit of matching is the byte: `?` and a character class
-match one byte, ranges compare byte values, and the separator is one
-byte.
+An option selects the unit: code points, as today, or bytes. With
+bytes, `?` and a character class match one byte, ranges compare byte
+values, and the separator is one byte. This is the one option that
+selects a matching loop rather than only shaping what the compiler
+emits; the choice is made once, at compilation.
 
-## Git profile
+## Syntax options
 
-Differences from the default language, read from `wildmatch.c` at git
-2.56.0:
+Each of these is an option of its own. The differences from the default
+language are read from `wildmatch.c` at git 2.56.0:
 
 - A class is negated by `^` as well as by `!`.
 - POSIX named classes inside a class: `[:alnum:]`, `[:alpha:]`,
@@ -54,9 +60,12 @@ Differences from the default language, read from `wildmatch.c` at git
 
 ## What must hold
 
-- GLOB-MATCH-001 through GLOB-MATCH-004 hold in byte mode and under the
-  git profile as they do today.
-- For every pattern and input, the result under the git profile equals
+- GLOB-MATCH-001 through GLOB-MATCH-004 hold for every combination of
+  options as they do today.
+- Each option is defined on its own and in combination with the others;
+  a combination the language cannot give a meaning to is refused at
+  compilation, not left undefined.
+- For every pattern and input, the result under the git preset equals
   git's wildmatch result with the corresponding flags. Git's own table
   of cases (`t/t3070-wildmatch.sh`, 190 `match` lines at 2.56.0) is the
   starting test data, and the git binary git-go pins as its oracle
