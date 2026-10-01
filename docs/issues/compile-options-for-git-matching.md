@@ -9,8 +9,8 @@ go through git's wildmatch (`wildmatch.c` in git's source). git-go will
 use this library for that matching rather than write a second matcher,
 for the engine's guarantees: no allocation while matching
 (GLOB-MATCH-003) and bounded execution (GLOB-MATCH-004). Git's own
-matcher backtracks and can take exponential time, and a git host matches
-patterns that clients supply.
+matcher backtracks, with a worst-case cost that has not been established
+here, and a git host matches patterns that clients supply.
 
 The language defined here differs from git's. Rather than add a second
 fixed language, each difference becomes an option given when a pattern
