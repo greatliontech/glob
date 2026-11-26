@@ -1,4 +1,8 @@
 {
-  "version": 3,
-  "findings": []
+  "version": 17,
+  "runtimeInputsTable": [],
+  "evidenceTable": [],
+  "ledgerTable": [],
+  "findings": [],
+  "coverageBounds": []
 }

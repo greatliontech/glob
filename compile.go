@@ -127,6 +127,7 @@ func compilePattern(pattern string, separator rune, allowSpecialization bool) (*
 			}, nil
 		}
 	}
+	compiled.subtree = computeProgramSubtree(compiled)
 	return compiled, nil
 }
 

@@ -16,9 +16,10 @@
 //   - backslash to quote the next pattern rune, except that an escaped
 //     configured separator outside a class remains structural
 //
-// A compiled [Pattern] is immutable and safe for concurrent use. Matching
-// performs no heap allocations. For an input of N runes and source pattern of
-// M runes, matching takes O(N*M) time and O(M) working memory; for a fixed
-// pattern, time is linear in the input length. Compile patterns once and reuse
-// them when matching multiple inputs.
+// A compiled [Pattern] is immutable and safe for concurrent use. [Pattern.Match]
+// and [Pattern.CanMatchInSubtree] perform no heap allocations. For an input of
+// N runes and source pattern of M runes, execution takes O(N*M) time and O(M)
+// working memory; for a fixed pattern, time is linear in the input length.
+// Compile patterns once and reuse them when matching multiple inputs or pruning
+// directory subtrees.
 package glob

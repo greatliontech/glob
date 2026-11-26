@@ -30,6 +30,7 @@ type dfaProgram struct {
 	stride      uint16
 	transitions []uint16
 	accept      []bool
+	subtree     []bool
 	classes     []dfaRuneClass
 	ascii       [utf8.RuneSelf]uint16
 }
@@ -108,6 +109,7 @@ func determinize(p *Pattern, limits dfaLimits) *dfaProgram {
 			d.ascii[r] = d.symbol(r)
 		}
 	}
+	d.subtree = computeDFASubtree(d)
 	return d
 }
 
@@ -122,7 +124,14 @@ func equalStateSet(a []uint64, b *stateSet) bool {
 
 func dfaRuneClasses(p *Pattern) []dfaRuneClass {
 	max := int64(utf8.MaxRune) + 1
-	cuts := []int64{0, max, int64(p.separator), int64(p.separator) + 1}
+	cuts := []int64{
+		0,
+		max,
+		surrogateMin,
+		surrogateMax + 1,
+		int64(p.separator),
+		int64(p.separator) + 1,
+	}
 	for _, in := range p.program {
 		if in.op == opLiteral {
 			cuts = append(cuts, int64(in.r), int64(in.r)+1)
@@ -139,7 +148,7 @@ func dfaRuneClasses(p *Pattern) []dfaRuneClass {
 	classes := make([]dfaRuneClass, 0, len(cuts)-1)
 	for i := 0; i+1 < len(cuts); i++ {
 		lo, hi := cuts[i], cuts[i+1]-1
-		if lo < 0 || lo > int64(utf8.MaxRune) || lo == int64(p.separator) && hi == lo {
+		if lo < 0 || lo > int64(utf8.MaxRune) || (lo >= surrogateMin && hi <= surrogateMax) || (lo == int64(p.separator) && hi == lo) {
 			continue
 		}
 		classes = append(classes, dfaRuneClass{hi: rune(hi), representative: rune(lo)})

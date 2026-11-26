@@ -80,8 +80,9 @@ func TestMatchDoesNotMutatePattern(t *testing.T) {
 			}
 			for _, input := range tt.inputs {
 				p.Match(input)
+				p.CanMatchInSubtree(input)
 				if !reflect.DeepEqual(p, want) {
-					t.Fatalf("Match(%q) mutated compiled pattern", input)
+					t.Fatalf("Match/CanMatchInSubtree(%q) mutated compiled pattern", input)
 				}
 			}
 		})
@@ -123,6 +124,14 @@ func TestExecutionStrategiesMatchProgram(t *testing.T) {
 		{"a/**/b", '/', matcherDFA},
 		{"[a-z]*", 'm', matcherDFA},
 		{"[a-\U0010ffff]", '/', matcherDFA},
+		{"?", '/', matcherDFA},
+		{"a/?/b", '/', matcherDFA},
+		{"a/??/b", '/', matcherDFA},
+		{"foo/**", '/', matcherDFA},
+		{"[!\x00-\ud7ff\ue000-\U0010ffff]", '/', matcherDFA},
+		{"[!\x00-\U0010ffff]", '/', matcherDFA},
+		{"[!\x00-y{-\ud7ff\ue000-\U0010ffff]", '/', matcherDFA},
+		{"[!\x00-.\x30-\ud7ff\ue000-\U0010ffff]", '/', matcherDFA},
 	}
 	alphabet := []byte{'a', 'b', '/', '.', 0xff}
 	for _, tt := range tests {
@@ -135,21 +144,21 @@ func TestExecutionStrategiesMatchProgram(t *testing.T) {
 		}
 		switch p.kind {
 		case matcherProgram:
-			if len(p.program) == 0 {
-				t.Errorf("Compile(%q, %q) selected program without instructions", tt.pattern, tt.separator)
+			if len(p.program) == 0 || len(p.subtree) != int(p.words) {
+				t.Errorf("Compile(%q, %q) selected program with incomplete state", tt.pattern, tt.separator)
 			}
 			if p.dfa != nil {
 				t.Errorf("Compile(%q, %q) fallback retained a DFA", tt.pattern, tt.separator)
 			}
 		case matcherDFA:
-			if p.dfa == nil || len(p.dfa.transitions) == 0 {
-				t.Errorf("Compile(%q, %q) selected an empty DFA", tt.pattern, tt.separator)
+			if p.dfa == nil || len(p.dfa.transitions) == 0 || len(p.dfa.subtree) != len(p.dfa.accept) {
+				t.Errorf("Compile(%q, %q) selected an incomplete DFA", tt.pattern, tt.separator)
 			}
-			if len(p.program) != 0 || len(p.classes) != 0 || p.words != 0 {
+			if len(p.program) != 0 || len(p.classes) != 0 || p.words != 0 || len(p.subtree) != 0 {
 				t.Errorf("Compile(%q, %q) DFA retained fallback state", tt.pattern, tt.separator)
 			}
 		default:
-			if p.dfa != nil || len(p.program) != 0 || len(p.classes) != 0 || p.words != 0 {
+			if p.dfa != nil || len(p.program) != 0 || len(p.classes) != 0 || p.words != 0 || len(p.subtree) != 0 {
 				t.Errorf("Compile(%q, %q) specialization retained compiled state", tt.pattern, tt.separator)
 			}
 		}
@@ -161,16 +170,26 @@ func TestExecutionStrategiesMatchProgram(t *testing.T) {
 			if got, want := p.Match(input), fallback.matchProgram(input); got != want {
 				t.Errorf("Compile(%q, %q).Match(%q) = %v, program = %v", tt.pattern, tt.separator, input, got, want)
 			}
+			if got, want := p.CanMatchInSubtree(input), fallback.canMatchSubtreeProgram(input); got != want {
+				t.Errorf("Compile(%q, %q).CanMatchInSubtree(%q) = %v, program = %v", tt.pattern, tt.separator, input, got, want)
+			}
 		})
 		for _, input := range []string{
 			"src/main.go",
 			"src/x/main.go",
+			"src/",
+			"src/x/",
+			"foo",
+			"foo/",
+			"foo/x/",
 			"prepost",
 			"preXpost",
 			"abaaba",
 			"abaxaba",
 			"λβω",
 			"λόγος",
+			"λόγος/",
+			string([]byte{0xce}),
 			"main.go",
 			"a/b.go",
 			"a/bλ",
@@ -184,6 +203,9 @@ func TestExecutionStrategiesMatchProgram(t *testing.T) {
 		} {
 			if got, want := p.Match(input), fallback.matchProgram(input); got != want {
 				t.Errorf("Compile(%q, %q).Match(%q) = %v, program = %v", tt.pattern, tt.separator, input, got, want)
+			}
+			if got, want := p.CanMatchInSubtree(input), fallback.canMatchSubtreeProgram(input); got != want {
+				t.Errorf("Compile(%q, %q).CanMatchInSubtree(%q) = %v, program = %v", tt.pattern, tt.separator, input, got, want)
 			}
 		}
 	}
@@ -219,6 +241,9 @@ func TestDeterminizationLimits(t *testing.T) {
 	}
 	if !selected.Match(strings.Repeat("a", maxDFAStates) + "b") {
 		t.Fatal("program fallback rejected matching input")
+	}
+	if !selected.CanMatchInSubtree("") || !selected.CanMatchInSubtree("aaa") || selected.CanMatchInSubtree("c/") {
+		t.Fatal("program fallback CanMatchInSubtree gave wrong verdict")
 	}
 }
 
@@ -273,6 +298,9 @@ func FuzzExecutionStrategiesMatch(f *testing.F) {
 		}
 		if got, want := optimized.Match(input), fallback.matchProgram(input); got != want {
 			t.Fatalf("Compile(%q, %q).Match(%q) = %v, fallback = %v", pattern, separator, input, got, want)
+		}
+		if got, want := optimized.CanMatchInSubtree(input), fallback.canMatchSubtreeProgram(input); got != want {
+			t.Fatalf("Compile(%q, %q).CanMatchInSubtree(%q) = %v, fallback = %v", pattern, separator, input, got, want)
 		}
 	})
 }

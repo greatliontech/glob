@@ -29,10 +29,20 @@ Use `MustCompile` for patterns that are constants under application control:
 var goFiles = glob.MustCompile("**/*.go")
 ```
 
-Compiled patterns are immutable and safe for concurrent use. `Match` performs
-no heap allocations. For an input of `N` runes and source pattern of `M` runes,
-matching takes `O(N*M)` time and `O(M)` working memory; for a fixed pattern,
-time is linear in the input length.
+Compiled patterns are immutable and safe for concurrent use. `Match` and
+`CanMatchInSubtree` perform no heap allocations. For an input of `N` runes and
+source pattern of `M` runes, execution takes `O(N*M)` time and `O(M)` working
+memory; for a fixed pattern, time is linear in the input length.
+
+When walking a directory hierarchy, use `CanMatchInSubtree` (`""` for the root
+directory, `"a/b/"` for a subdirectory) to prune entire directory subtrees that
+cannot contain any matching relative file path:
+
+```go
+if !pattern.CanMatchInSubtree("vendor/") {
+	// Skip walking vendor/.
+}
+```
 
 ## Compared With Go Regexp
 

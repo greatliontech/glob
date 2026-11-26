@@ -49,3 +49,17 @@ func ExampleCompile() {
 	// Output:
 	// invalid pattern at byte 2
 }
+
+func ExamplePattern_CanMatchInSubtree() {
+	pattern := glob.MustCompile("{cmd,internal}/**/*.go")
+
+	for _, dir := range []string{"", "cmd/", "internal/net/", "vendor/"} {
+		fmt.Printf("%q: %t\n", dir, pattern.CanMatchInSubtree(dir))
+	}
+
+	// Output:
+	// "": true
+	// "cmd/": true
+	// "internal/net/": true
+	// "vendor/": false
+}

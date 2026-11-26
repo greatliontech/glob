@@ -42,7 +42,8 @@ func (e *CompileError) Error() string {
 }
 
 // Pattern is an immutable compiled glob pattern. A Pattern is safe for
-// concurrent use by multiple goroutines. Its zero value is invalid; methods
+// concurrent use by multiple goroutines. Its zero value is invalid; except for
+// [Pattern.CanMatchInSubtree] (which returns false on a nil receiver), methods
 // must be called on a non-nil Pattern returned by successful compilation.
 type Pattern struct {
 	source    string
@@ -55,6 +56,7 @@ type Pattern struct {
 	words     uint16
 	program   []instruction
 	classes   []characterClass
+	subtree   []uint64
 	dfa       *dfaProgram
 }
 

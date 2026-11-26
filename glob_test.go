@@ -348,6 +348,158 @@ func TestMatchAllocations(t *testing.T) {
 		if allocs != 0 {
 			t.Errorf("Match(%q) allocated %v times", tt.pattern, allocs)
 		}
+		subtreeAllocs := testing.AllocsPerRun(1000, func() {
+			matchSink = p.CanMatchInSubtree(tt.input)
+		})
+		if subtreeAllocs != 0 {
+			t.Errorf("CanMatchInSubtree(%q) allocated %v times", tt.pattern, subtreeAllocs)
+		}
+	}
+}
+
+func TestCanMatchInSubtree(t *testing.T) {
+	t.Parallel()
+	var nilPattern *glob.Pattern
+	if nilPattern.CanMatchInSubtree("") || nilPattern.CanMatchInSubtree("a/") {
+		t.Fatal("nil Pattern returned true from CanMatchInSubtree")
+	}
+	var zeroPattern glob.Pattern
+	if zeroPattern.CanMatchInSubtree("") || zeroPattern.CanMatchInSubtree("a/") {
+		t.Fatal("zero Pattern returned true from CanMatchInSubtree")
+	}
+
+	fullNegatedEmpty := "[!\x00-\ud7ff\ue000-\U0010ffff]"
+	nearlyFullNegated := "[!\x00-y{-\ud7ff\ue000-\U0010ffff]"
+
+	tests := []struct {
+		pattern     string
+		separator   rune
+		childPrefix string
+		want        bool
+	}{
+		{"", '/', "", false},
+		{"", '/', "a/", false},
+		{"/", '/', "", false},
+		{"/", '/', "/", false},
+		{"a/", '/', "", false},
+		{"a/", '/', "a/", false},
+		{"a//b", '/', "", false},
+		{"a//b", '/', "a/", false},
+		{"a//b", '/', "a//", true},
+		{"a/b", '/', "", true},
+		{"a/b", '/', "a/", true},
+		{"a/b", '/', "a/b/", false},
+		{"a/b", '/', "b/", false},
+		{"a/b", '/', "a", false},
+		{"ab", '/', "a", true},
+		{"/**", '/', "", false},
+		{"/**", '/', "/", true},
+		{"/**", '/', "/sub/", true},
+		{"**/a/", '/', "", false},
+		{"**/a/", '/', "a/", false},
+		{"*", '/', "", true},
+		{"*", '/', "a/", false},
+		{"*.go", '/', "", true},
+		{"*.go", '/', "cmd/", false},
+		{"a/*.go", '/', "", true},
+		{"a/*.go", '/', "a/", true},
+		{"a/*.go", '/', "a/sub/", false},
+		{"a/*/b/c", '/', "", true},
+		{"a/*/b/c", '/', "a/", true},
+		{"a/*/b/c", '/', "a/foo/", true},
+		{"a/*/b/c", '/', "a/foo/b", false},
+		{"a/*/b/c", '/', "a/foo/b/", true},
+		{"a/*/b/c", '/', "a/foo/b/c/", false},
+		{"a/*b/", '/', "", false},
+		{"a/*b/", '/', "a/", false},
+		{"a/*b//c", '/', "", false},
+		{"a/*b//c", '/', "a/", false},
+		{"a//b/*c", '/', "", false},
+		{"a/*λ/α", '/', "a/\xbb/", false},
+		{"a/*λ/α", '/', "a/xλ/", true},
+		{`a\λ*\λc`, 'λ', "aλbλ", true},
+		{`a\λ*\λc`, 'λ', "aλbλdλ", false},
+		{`[a-z]*\λb`, 'λ', "aλ", true},
+		{`[a-z]*\λb`, 'λ', "aλcλ", false},
+		{"**", '/', "", true},
+		{"**", '/', "any/deep/dir/", true},
+		{"**/*.go", '/', "", true},
+		{"**/*.go", '/', "any/deep/dir/", true},
+		{"a/**/b", '/', "", true},
+		{"a/**/b", '/', "a/", true},
+		{"a/**/b", '/', "a/x/y/", true},
+		{"a/**/b", '/', "other/", false},
+		{"{cmd,internal}/**/*.{go,mod}", '/', "", true},
+		{"{cmd,internal}/**/*.{go,mod}", '/', "cmd/", true},
+		{"{cmd,internal}/**/*.{go,mod}", '/', "internal/net/", true},
+		{"{cmd,internal}/**/*.{go,mod}", '/', "vendor/", false},
+		{"λόγος/α", '/', string([]byte{0xce}), false},
+		{"λόγος/α", '/', "λόγος/", true},
+		{fullNegatedEmpty, '/', "", false},
+		{nearlyFullNegated, '/', "", true},
+		{"a.*.go", '.', "", true},
+		{"a.*.go", '.', "a.", true},
+		{"a.*.go", '.', "a.b.", true},
+		{"a.*.go", '.', "a.b.c.", false},
+		{"a.*.go", '.', "x.", false},
+		{`a\\*\\c`, '\\', `a\`, true},
+		{`a\\*\\c`, '\\', `a\b\`, true},
+		{`a\\*\\c`, '\\', `a\b\d\`, false},
+	}
+	for _, tt := range tests {
+		p := glob.MustCompile(tt.pattern, glob.WithSeparator(tt.separator))
+		if got := p.CanMatchInSubtree(tt.childPrefix); got != tt.want {
+			t.Errorf("Compile(%q, %q).CanMatchInSubtree(%q) = %v, want %v", tt.pattern, tt.separator, tt.childPrefix, got, tt.want)
+		}
+	}
+}
+
+func TestCanMatchInSubtreeExhaustiveOracle(t *testing.T) {
+	t.Parallel()
+	alphabet := []rune{'a', 'b', '/', '.'}
+	var validRels []string
+	forEachString(alphabet, 5, func(s string) {
+		if s == "" || s[0] == '/' || s[len(s)-1] == '/' || strings.Contains(s, "//") {
+			return
+		}
+		validRels = append(validRels, s)
+	})
+
+	patterns := []string{
+		"",
+		"a",
+		"a/b",
+		"a/",
+		"/a",
+		"a//b",
+		"*",
+		"a/*",
+		"a/*/b",
+		"a/*b",
+		"a*b",
+		"**",
+		"**/*.a",
+		"a/**/b",
+		"a/**",
+		"**/b",
+		"{a,b}/**/*.{a,b}",
+		"a/{**,b}/a",
+		"[!a]/*",
+	}
+	for _, pat := range patterns {
+		p := glob.MustCompile(pat)
+		forEachString(alphabet, 4, func(prefix string) {
+			want := false
+			for _, rel := range validRels {
+				if p.Match(prefix + rel) {
+					want = true
+					break
+				}
+			}
+			if got := p.CanMatchInSubtree(prefix); got != want {
+				t.Fatalf("Compile(%q).CanMatchInSubtree(%q) = %v, brute-force oracle = %v", pat, prefix, got, want)
+			}
+		})
 	}
 }
 
@@ -355,11 +507,19 @@ func TestConcurrentMatch(t *testing.T) {
 	patterns := []*glob.Pattern{
 		glob.MustCompile("{cmd,internal}/**/*.{go,mod}"),
 		glob.MustCompile("**/*.go"),
+		glob.MustCompile(strings.Repeat("{,a}", 256) + "cmd/main.go"),
 	}
 	inputs := []string{"cmd/main.go", "internal/a/b/go.mod", "other/main.go", "cmd/main.sum"}
 	wants := [][]bool{
 		{true, true, false, false},
 		{true, false, true, false},
+		{true, false, false, false},
+	}
+	subtrees := []string{"", "cmd/", "vendor/"}
+	subtreeWants := [][]bool{
+		{true, true, false},
+		{true, true, true},
+		{true, true, false},
 	}
 	var wg sync.WaitGroup
 	for pattern, p := range patterns {
@@ -371,6 +531,11 @@ func TestConcurrentMatch(t *testing.T) {
 					at := i % len(inputs)
 					if got := p.Match(inputs[at]); got != wants[pattern][at] {
 						t.Errorf("Match(%q) = %v, want %v", inputs[at], got, wants[pattern][at])
+						return
+					}
+					sat := i % len(subtrees)
+					if got := p.CanMatchInSubtree(subtrees[sat]); got != subtreeWants[pattern][sat] {
+						t.Errorf("CanMatchInSubtree(%q) = %v, want %v", subtrees[sat], got, subtreeWants[pattern][sat])
 						return
 					}
 				}

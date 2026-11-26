@@ -344,32 +344,54 @@ pattern consumes exactly the quoted rune. Quoting at most doubles the byte
 length; compilation of a quoted result is subject to GLOB-COMPILE-003 like
 any pattern.
 
+## Subtree Pruning
+
+### GLOB-SUBTREE-001: Relative-file subtree pruning
+
+`CanMatchInSubtree(childPrefix)` reports whether there exists at least one
+non-empty valid UTF-8 relative file path `rel` — a path of one or more
+non-empty Unicode-scalar components separated by the configured separator (no
+leading separator, no trailing separator, and no consecutive separators) — such
+that matching `childPrefix + rel` under GLOB-UNICODE-002 returns `true`
+(equivalently, the code-point sequence of `childPrefix` under GLOB-UNICODE-002
+followed by `rel`, without fusing an incomplete trailing UTF-8 byte sequence
+across the boundary).
+
+Callers traversing a directory tree pass `""` for the root directory and a
+separator-terminated prefix such as `"a/b/"` for a subdirectory (for `""` and
+every separator-terminated `childPrefix`, returning `false` also rules out
+arbitrary raw-byte `rel` under GLOB-UNICODE-002); any `childPrefix` is accepted
+and evaluated under the same definition. Returning `false` proves that no such
+relative file path below `childPrefix` can match; returning `true` proves that
+at least one such relative file path exists. Calling `CanMatchInSubtree` on a
+`nil` `*Pattern` returns `false`.
+
 ## Matching Properties
 
 ### GLOB-MATCH-001: Determinism
 
-For a compiled pattern and input string, matching always returns the same
-boolean result. Results do not depend on prior matches, goroutine scheduling,
-or internal optimization selection.
+For a compiled pattern and input string, matching and subtree pruning always
+return the same boolean results. Results do not depend on prior calls,
+goroutine scheduling, or internal optimization selection.
 
 ### GLOB-MATCH-002: Concurrent use
 
-A compiled matcher is safe for simultaneous matching by multiple goroutines
-without caller-provided synchronization.
+A compiled matcher is safe for simultaneous matching and subtree pruning by
+multiple goroutines without caller-provided synchronization.
 
 ### GLOB-MATCH-003: Allocation behavior
 
-Matching a successfully compiled pattern performs no heap allocations. This
-property applies equally to matching and non-matching inputs and to concurrent
-use.
+Matching or subtree-pruning against a successfully compiled pattern performs no
+heap allocations. This property applies equally to matching and non-matching
+inputs and to concurrent use.
 
 ### GLOB-MATCH-004: Bounded execution
 
 For an input containing `N` decoded code points and source pattern containing
-`M` decoded code points, worst-case matching time is bounded by `O(N*M)` and
-working memory is bounded by `O(M)`. Matching time is not exponential in input
-or source-pattern length. For a fixed compiled pattern, matching time is
-therefore linear in input length.
+`M` decoded code points, worst-case matching and subtree-pruning time are
+bounded by `O(N*M)` and working memory is bounded by `O(M)`. Execution time is
+not exponential in input or source-pattern length. For a fixed compiled
+pattern, execution time is therefore linear in input length.
 
 ## Behavioral Examples
 
@@ -447,16 +469,16 @@ The following patterns are malformed under the default separator:
 ### INV-GLOB-SEMANTIC-EQUIVALENCE
 
 Every execution strategy for a successfully compiled pattern accepts exactly
-the language defined by this document. Selecting an optimization cannot change
-a match result.
+the language and subtree-pruning predicate defined by this document. Selecting
+an optimization cannot change a `Match` or `CanMatchInSubtree` result.
 
 INV-GLOB-SEMANTIC-EQUIVALENCE: enforced by `TestExecutionStrategiesMatchProgram`
 and `FuzzExecutionStrategiesMatch`.
 
 ### INV-GLOB-IMMUTABLE-MATCHER
 
-Compilation is the only operation that constructs matcher state. Matching does
-not mutate compiled matcher state.
+Compilation is the only operation that constructs matcher state. `Match` and
+`CanMatchInSubtree` do not mutate compiled matcher state.
 
 INV-GLOB-IMMUTABLE-MATCHER: enforced by `TestMatchDoesNotMutatePattern` and
 `TestConcurrentMatch`.
@@ -464,9 +486,10 @@ INV-GLOB-IMMUTABLE-MATCHER: enforced by `TestMatchDoesNotMutatePattern` and
 ### INV-GLOB-BOUNDED-MATCH
 
 The compiled representation supports every valid source pattern admitted by
-GLOB-COMPILE-003. Every such pattern has a non-exponential matching strategy
-within the documented time and allocation bounds; internal representation
-limits cannot reject it or assign it an unbounded matcher.
+GLOB-COMPILE-003. Every such pattern has a non-exponential matching and
+subtree-pruning strategy within the documented time and allocation bounds;
+internal representation limits cannot reject it or assign it an unbounded
+matcher.
 
 INV-GLOB-BOUNDED-MATCH: enforced by `FuzzCompiledProgramInvariants`,
 `FuzzExecutionStrategiesMatch`, `TestDeterminizationLimits`, and
